@@ -1,6 +1,6 @@
-# Copyright 2013 Olivier Gillet.
+# Copyright 2013 Emilie Gillet.
 # 
-# Author: Olivier Gillet (ol.gillet@gmail.com)
+# Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -48,6 +48,8 @@ PACKAGES       = peaks \
 		stmlib/utils \
 		stmlib/system
 RESOURCES      = peaks/resources
+
+TOOLCHAIN_PATH ?= /usr/local/arm-4.8.3/
 
 include stmlib/makefile.inc
 

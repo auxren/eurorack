@@ -1,6 +1,6 @@
-// Copyright 2013 Olivier Gillet.
+// Copyright 2013 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -346,6 +346,7 @@ void Ui::OnSwitchPressed(const Event& e) {
       processor_[i].set_linked(linked);
     }
     Link(1 - e.control_id);
+    SaveState();
     return;
   }
   

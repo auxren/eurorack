@@ -1,4 +1,4 @@
-# Copyright 2012 Olivier Gillet.
+# Copyright 2012 Emilie Gillet.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@ PACKAGES       = avrlibx \
 		edges
 RESOURCES      = edges/resources
 SYSEX_FLAGS    = --page_size=128 --device_id=10
-# EXTRA_DEFINES  =-DOCTAL_ADC
+EXTRA_DEFINES  =-DOCTAL_ADC
 
 FUSE0 = 00
 FUSE1 = 00

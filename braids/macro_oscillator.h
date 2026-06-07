@@ -1,6 +1,6 @@
-// Copyright 2012 Olivier Gillet.
+// Copyright 2012 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -87,6 +87,7 @@ class MacroOscillator {
   void RenderCSaw(const uint8_t*, int16_t*, size_t);
   void RenderMorph(const uint8_t*, int16_t*, size_t);
   void RenderSawSquare(const uint8_t*, int16_t*, size_t);
+  void RenderSub(const uint8_t*, int16_t*, size_t);
   void RenderDualSync(const uint8_t*, int16_t*, size_t);
   void RenderSineTriangle(const uint8_t*, int16_t*, size_t);
   void RenderBuzz(const uint8_t*, int16_t*, size_t);

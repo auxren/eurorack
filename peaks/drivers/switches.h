@@ -1,6 +1,6 @@
-// Copyright 2013 Olivier Gillet.
+// Copyright 2013 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -60,8 +60,12 @@ class Switches {
   inline bool pressed_immediate(uint8_t index) const {
     if (index == 0) {
       return !GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_13);
-    } else {
+    } else if (index == 2) {
       return !GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_8);
+    } else if (index == 1) {
+      return !GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_14);
+    } else {
+      return false;
     }
   }
 

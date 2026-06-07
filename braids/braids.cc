@@ -1,6 +1,6 @@
-// Copyright 2012 Olivier Gillet.
+// Copyright 2012 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -217,10 +217,10 @@ void RenderBlock() {
   // Set timbre and color: CV + internal modulation.
   uint16_t parameters[2];
   for (uint16_t i = 0; i < 2; ++i) {
-    uint16_t value = adc.channel(i) << 3;
+    int32_t value = settings.adc_to_parameter(i, adc.channel(i));
     Setting ad_mod_setting = i == 0 ? SETTING_AD_TIMBRE : SETTING_AD_COLOR;
     value += ad_value * settings.GetValue(ad_mod_setting) >> 5;
-    if (value > 32767) value = 32767;
+    CONSTRAIN(value, 0, 32767);
     parameters[i] = value;
   }
   osc.set_parameters(parameters[0], parameters[1]);
@@ -276,16 +276,16 @@ void RenderBlock() {
   osc.Render(sync_buffer, render_buffer, kBlockSize);
   
   // Copy to DAC buffer with sample rate and bit reduction applied.
-  int16_t sample = 0;
+  int16_t held_sample = 0;
   size_t decimation_factor = decimation_factors[settings.data().sample_rate];
   uint16_t bit_mask = bit_reduction_masks[settings.data().resolution];
   int32_t gain = settings.GetValue(SETTING_AD_VCA) ? ad_value : 65535;
   uint16_t signature = settings.signature() * settings.signature() * 4095;
   for (size_t i = 0; i < kBlockSize; ++i) {
     if ((i % decimation_factor) == 0) {
-      sample = render_buffer[i] & bit_mask;
+      held_sample = render_buffer[i] & bit_mask;
     }
-    sample = sample * gain_lp >> 16;
+    int16_t sample = held_sample * gain_lp >> 16;
     gain_lp += (gain - gain_lp) >> 4;
     int16_t warped = ws.Transform(sample);
     render_buffer[i] = Mix(sample, warped, signature);

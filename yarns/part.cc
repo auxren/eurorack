@@ -1,6 +1,6 @@
-// Copyright 2013 Olivier Gillet.
+// Copyright 2013 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -63,6 +63,7 @@ void Part::Init() {
   seq_recording_ = false;
   seq_running_ = false;
   release_latched_keys_on_next_note_on_ = false;
+  transposable_ = true;
 }
   
 void Part::AllocateVoices(Voice* voice, uint8_t num_voices, bool polychain) {
@@ -209,7 +210,8 @@ bool Part::PitchBend(uint8_t channel, uint16_t pitch_bend) {
 bool Part::Aftertouch(uint8_t channel, uint8_t note, uint8_t velocity) {
   if (voicing_.allocation_mode != VOICE_ALLOCATION_MODE_MONO) {
     uint8_t voice_index = \
-        voicing_.allocation_mode == VOICE_ALLOCATION_MODE_POLY ? \
+        (voicing_.allocation_mode == VOICE_ALLOCATION_MODE_POLY || \
+         voicing_.allocation_mode == VOICE_ALLOCATION_MODE_POLY_STEAL_MOST_RECENT) ? \
         poly_allocator_.Find(note) : \
         FindVoiceForNote(note);
     if (voice_index < poly_allocator_.size()) {
@@ -326,7 +328,7 @@ void Part::ClockSequencer() {
 
   if (step.has_note()) {
     int16_t note = step.note();
-    if (pressed_keys_.size() && !seq_recording_) {
+    if (pressed_keys_.size() && transposable_) {
       // When we play a monophonic sequence, we can make the guess that root
       // note = first note.
       // But this is not the case when we are playing several sequences at the
@@ -478,18 +480,21 @@ void Part::DispatchSortedNotes(bool unison) {
   uint8_t n = mono_allocator_.size();
   for (uint8_t i = 0; i < num_voices_; ++i) {
     uint8_t index = 0xff;
-    if (unison) {
+    if (unison && n < num_voices_) {
       index = n ? (i * n / num_voices_) : 0xff;
     } else {
       index = i < mono_allocator_.size() ? i : 0xff;
     }
     if (index != 0xff) {
+      const NoteEntry& note_entry = mono_allocator_.note_by_priority(
+          static_cast<NoteStackFlags>(voicing_.allocation_priority),
+          index);
       voice_[i]->NoteOn(
-          Tune(mono_allocator_.sorted_note(index).note),
-          mono_allocator_.sorted_note(index).velocity,
+          Tune(note_entry.note),
+          note_entry.velocity,
           voicing_.portamento,
           !voice_[i]->gate_on());
-      active_note_[i] = mono_allocator_.sorted_note(index).note;
+      active_note_[i] = note_entry.note;
     } else {
       voice_[i]->NoteOff();
       active_note_[i] = VOICE_ALLOCATION_NOT_FOUND;
@@ -516,8 +521,8 @@ void Part::InternalNoteOn(uint8_t note, uint8_t velocity) {
         voice_[i]->NoteOn(
             Tune(after.note),
             after.velocity,
-            !voicing_.legato_mode || legato ? voicing_.portamento : 0,
-            !voicing_.legato_mode || !legato);
+            (voicing_.legato_mode == 1) && !legato ? 0 : voicing_.portamento,
+            (voicing_.legato_mode == 0) || !legato);
       }
     }
   } else if (voicing_.allocation_mode == VOICE_ALLOCATION_MODE_POLY_SORTED ||
@@ -530,7 +535,11 @@ void Part::InternalNoteOn(uint8_t note, uint8_t velocity) {
     uint8_t voice_index = 0;
     switch (voicing_.allocation_mode) {
       case VOICE_ALLOCATION_MODE_POLY:
-        voice_index = poly_allocator_.NoteOn(note);
+        voice_index = poly_allocator_.NoteOn(note, VOICE_STEALING_MODE_LRU);
+        break;
+      
+      case VOICE_ALLOCATION_MODE_POLY_STEAL_MOST_RECENT:
+        voice_index = poly_allocator_.NoteOn(note, VOICE_STEALING_MODE_MRU);
         break;
         
       case VOICE_ALLOCATION_MODE_POLY_CYCLIC:
@@ -540,7 +549,7 @@ void Part::InternalNoteOn(uint8_t note, uint8_t velocity) {
         voice_index = cyclic_allocation_note_counter_;
         ++cyclic_allocation_note_counter_;
         break;
-        
+      
       case VOICE_ALLOCATION_MODE_POLY_RANDOM:
         voice_index = (Random::GetWord() >> 24) % num_voices_;
         break;
@@ -609,7 +618,7 @@ void Part::InternalNoteOff(uint8_t note) {
             Tune(after.note),
             after.velocity,
             voicing_.portamento,
-            !voicing_.legato_mode);
+            voicing_.legato_mode == 0);
       }
     }
   } else if (voicing_.allocation_mode == VOICE_ALLOCATION_MODE_POLY_SORTED ||
@@ -622,7 +631,8 @@ void Part::InternalNoteOff(uint8_t note) {
     }
   } else {
     uint8_t voice_index = \
-        voicing_.allocation_mode == VOICE_ALLOCATION_MODE_POLY ? \
+        (voicing_.allocation_mode == VOICE_ALLOCATION_MODE_POLY ||
+         voicing_.allocation_mode == VOICE_ALLOCATION_MODE_POLY_STEAL_MOST_RECENT) ? \
         poly_allocator_.NoteOff(note) : \
         FindVoiceForNote(note);
     if (voice_index < num_voices_) {
@@ -640,6 +650,8 @@ void Part::TouchVoiceAllocation() {
 }
 
 void Part::TouchVoices() {
+  CONSTRAIN(voicing_.aux_cv, 0, 7);
+  CONSTRAIN(voicing_.aux_cv_2, 0, 7);
   for (uint8_t i = 0; i < num_voices_; ++i) {
     voice_[i]->set_pitch_bend_range(voicing_.pitch_bend_range);
     voice_[i]->set_modulation_rate(voicing_.modulation_rate);
@@ -648,6 +660,7 @@ void Part::TouchVoices() {
     voice_[i]->set_trigger_scale(voicing_.trigger_scale);
     voice_[i]->set_trigger_shape(voicing_.trigger_shape);
     voice_[i]->set_aux_cv(voicing_.aux_cv);
+    voice_[i]->set_aux_cv_2(voicing_.aux_cv_2);
     voice_[i]->set_audio_mode(voicing_.audio_mode);
     voice_[i]->set_tuning(voicing_.tuning_transpose, voicing_.tuning_fine);
   }
@@ -681,6 +694,7 @@ void Part::Set(uint8_t address, uint8_t value) {
       case PART_VOICING_TRIGGER_SHAPE:
       case PART_VOICING_TRIGGER_SCALE:
       case PART_VOICING_AUX_CV:
+      case PART_VOICING_AUX_CV_2:
       case PART_VOICING_AUDIO_MODE:
       case PART_VOICING_TUNING_TRANSPOSE:
       case PART_VOICING_TUNING_FINE:
@@ -694,6 +708,25 @@ void Part::Set(uint8_t address, uint8_t value) {
     }
   }
 }
+
+struct Ratio { int p; int q; };
+
+const Ratio ratio_table[] = {
+  { 1, 1 },
+  { 0, 1 },
+  { 1, 8 },
+  { 1, 4 },
+  { 3, 8 },
+  { 1, 2 },
+  { 5, 8 },
+  { 3, 4 },
+  { 7, 8 },
+  { 1, 1 },
+  { 5, 4 },
+  { 3, 2 },
+  { 2, 1 },
+  { 51095, 65536 }
+};
 
 int16_t Part::Tune(int16_t midi_note) {
   int16_t note = midi_note;
@@ -712,7 +745,14 @@ int16_t Part::Tune(int16_t midi_note) {
         voicing_.tuning_system - TUNING_SYSTEM_PYTHAGOREAN][pitch_class];
   }
   
-  return pitch;
+  int32_t root = (static_cast<int32_t>(voicing_.tuning_root) + 60) << 7;
+  int32_t scaled_pitch = static_cast<int32_t>(pitch);
+  scaled_pitch -= root;
+  Ratio r = ratio_table[voicing_.tuning_factor];
+  scaled_pitch = scaled_pitch * r.p / r.q;
+  scaled_pitch += root;
+  CONSTRAIN(scaled_pitch, 0, 16383);
+  return static_cast<int16_t>(scaled_pitch);
 }
 
 }  // namespace yarns

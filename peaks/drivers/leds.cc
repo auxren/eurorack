@@ -1,6 +1,6 @@
-// Copyright 2013 Olivier Gillet.
+// Copyright 2013 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -39,17 +39,17 @@ void Leds::Init() {
   GPIO_InitTypeDef gpio_init;
   
   gpio_init.GPIO_Pin = GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_6 | GPIO_Pin_7;
-  gpio_init.GPIO_Speed = GPIO_Speed_10MHz;
+  gpio_init.GPIO_Speed = GPIO_Speed_2MHz;
   gpio_init.GPIO_Mode = GPIO_Mode_Out_PP;
   GPIO_Init(GPIOA, &gpio_init);
 
   gpio_init.GPIO_Pin = GPIO_Pin_10;
-  gpio_init.GPIO_Speed = GPIO_Speed_10MHz;
+  gpio_init.GPIO_Speed = GPIO_Speed_2MHz;
   gpio_init.GPIO_Mode = GPIO_Mode_Out_PP;
   GPIO_Init(GPIOB, &gpio_init);
   
   gpio_init.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1;
-  gpio_init.GPIO_Speed = GPIO_Speed_10MHz;
+  gpio_init.GPIO_Speed = GPIO_Speed_2MHz;
   gpio_init.GPIO_Mode = GPIO_Mode_AF_PP;
   GPIO_Init(GPIOB, &gpio_init);
   

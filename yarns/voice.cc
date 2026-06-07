@@ -1,6 +1,6 @@
-// Copyright 2013 Olivier Gillet.
+// Copyright 2013 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -46,7 +46,7 @@ using namespace stmlib_midi;
 const int32_t kOctave = 12 << 7;
 const int32_t kMaxNote = 120 << 7;
 
-void Voice::Init() {
+void Voice::Init(bool reset_calibration) {
   note_ = -1;
   note_source_ = note_target_ = note_portamento_ = 60 << 7;
   gate_ = false;
@@ -63,8 +63,11 @@ void Voice::Init() {
   portamento_exponential_shape_ = false;
   
   trigger_duration_ = 2;
-  for (uint8_t i = 0; i < kNumOctaves; ++i) {
-    calibrated_dac_code_[i] = 54586 - 5133 * i;
+  
+  if (reset_calibration) {
+    for (uint8_t i = 0; i < kNumOctaves; ++i) {
+      calibrated_dac_code_[i] = 54586 - 5133 * i;
+    }
   }
   dirty_ = false;
   oscillator_.Init(
@@ -102,7 +105,7 @@ inline uint16_t Voice::NoteToDacCode(int32_t note) const {
 void Voice::ResetAllControllers() {
   mod_pitch_bend_ = 8192;
   mod_wheel_ = 0;
-  std::fill(&mod_aux_[0], &mod_aux_[5], 0);
+  std::fill(&mod_aux_[0], &mod_aux_[7], 0);
 }
 
 void Voice::Refresh() {
@@ -137,8 +140,11 @@ void Voice::Refresh() {
       ?  -32768 + (lfo_phase_ >> 15)
       : 0x17fff - (lfo_phase_ >> 15);
   note += lfo * mod_wheel_ * vibrato_range_ >> 15;
-  mod_aux_[3] = (lfo * mod_wheel_ >> 7) + 32768;
-  mod_aux_[4] = lfo + 32768;
+  mod_aux_[0] = mod_velocity_ << 9;
+  mod_aux_[1] = mod_wheel_ << 9;
+  mod_aux_[5] = static_cast<uint16_t>(mod_pitch_bend_) << 2;
+  mod_aux_[6] = (lfo * mod_wheel_ >> 7) + 32768;
+  mod_aux_[7] = lfo + 32768;
   
   if (retrigger_delay_) {
     --retrigger_delay_;
@@ -208,11 +214,11 @@ void Voice::ControlChange(uint8_t controller, uint8_t value) {
       break;
     
     case kCCBreathController:
-      mod_aux_[1] = value << 9;
+      mod_aux_[3] = value << 9;
       break;
       
     case kCCFootPedalMsb:
-      mod_aux_[2] = value << 9;
+      mod_aux_[4] = value << 9;
       break;
   }
 }

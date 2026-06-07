@@ -1,6 +1,6 @@
-// Copyright 2013 Olivier Gillet.
+// Copyright 2013 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -92,7 +92,7 @@ class MidiHandler {
   
   static void PitchBend(uint8_t channel, uint16_t pitch_bend) {
     if (multi.PitchBend(channel, pitch_bend) && !multi.direct_thru()) {
-      Send3(0xe0 | channel, pitch_bend >> 7, pitch_bend & 0x7f);
+      Send3(0xe0 | channel, pitch_bend & 0x7f, pitch_bend >> 7);
     }
   }
 

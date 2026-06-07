@@ -1,6 +1,6 @@
-// Copyright 2013 Olivier Gillet.
+// Copyright 2017 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,52 +24,39 @@
 //
 // -----------------------------------------------------------------------------
 //
-// SVF used for modeling the bridged T-networks.
+// Driver for the 12-bit SAR ADC, reading the frequency pot and the
+// FM CV input.
 
-#include "peaks/drums/svf.h"
+#ifndef TIDES_DRIVERS_FIRMWARE_UPDATE_ADC_H_
+#define TIDES_DRIVERS_FIRMWARE_UPDATE_ADC_H_
 
-#include <cstdio>
+#include "stmlib/stmlib.h"
 
-#include "stmlib/utils/dsp.h"
+namespace tides {
 
-#include "peaks/resources.h"
-
-namespace peaks {
-
-using namespace stmlib;
-
-void Svf::Init() {
-  lp_ = 0;
-  bp_ = 0;
-  frequency_ = 33 << 7;
-  resonance_ = 16384;
-  dirty_ = true;
-  punch_ = 0;
-  mode_ = SVF_MODE_BP;
-}
-
-int32_t Svf::Process(int32_t in) {
-  if (dirty_) {
-    f_ = Interpolate824(lut_svf_cutoff, frequency_ << 17);
-    damp_ = Interpolate824(lut_svf_damp, resonance_ << 17);
-    dirty_ = false;
-  }
-  int32_t f = f_;
-  int32_t damp = damp_;
-  if (punch_) {
-    int32_t punch_signal = lp_ > 4096 ? lp_ : 2048;
-    f += ((punch_signal >> 4) * punch_) >> 9;
-    damp += ((punch_signal - 2048) >> 3);
-  }
-  int32_t notch = in - (bp_ * damp >> 15);
-  lp_ += f * bp_ >> 15;
-  CLIP(lp_)
-  int32_t hp = notch - lp_;
-  bp_ += f * hp >> 15;
-  CLIP(bp_)
+class FirmwareUpdateAdc {
+ public:
+  FirmwareUpdateAdc() { }
+  ~FirmwareUpdateAdc() { }
   
-  return mode_ == SVF_MODE_BP ? bp_ : (mode_ == SVF_MODE_HP ? hp : lp_);
-}
+  void Init();
+  void DeInit();
+  void Convert();
 
+  inline int32_t pot() const {
+    return static_cast<int32_t>(adc_values_[0]);
+  }
 
-}  // namespace peaks
+  inline int32_t sample() const {
+    return static_cast<int32_t>(adc_values_[1]);
+  }
+  
+ private:
+  uint16_t adc_values_[2];
+  
+  DISALLOW_COPY_AND_ASSIGN(FirmwareUpdateAdc);
+};
+
+}  // namespace tides
+
+#endif  // TIDES_DRIVERS_FIRMWARE_UPDATE_ADC_H_

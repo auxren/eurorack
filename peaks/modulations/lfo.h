@@ -1,6 +1,6 @@
-// Copyright 2013 Olivier Gillet.
+// Copyright 2013 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -53,7 +53,7 @@ class Lfo {
   ~Lfo() { }
   
   void Init();
-  void FillBuffer(InputBuffer* input_buffer, OutputBuffer* output_buffer);
+  void Process(const GateFlags* gate_flags, int16_t* out, size_t size);
   
   void Configure(uint16_t* parameter, ControlMode control_mode) {
     if (control_mode == CONTROL_MODE_HALF) {
@@ -65,7 +65,7 @@ class Lfo {
         set_shape_parameter_preset(parameter[1]);
       }
       set_reset_phase(0);
-      set_level(65535);
+      set_level(40960);
     } else {
       if (sync_) {
         set_level(parameter[0]);
@@ -73,7 +73,7 @@ class Lfo {
         set_parameter(parameter[2] - 32768);
         set_reset_phase(parameter[3] - 32768);
       } else {
-        set_level(65535);
+        set_level(40960);
         set_rate(parameter[0]);
         set_shape_integer(parameter[1]);
         set_parameter(parameter[2] - 32768);

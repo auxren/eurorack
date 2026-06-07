@@ -1,6 +1,6 @@
-// Copyright 2013 Olivier Gillet.
+// Copyright 2013 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -45,7 +45,7 @@ const uint8_t clock_divisions[] = {
   96, 48, 32, 24, 16, 12, 8, 6, 4, 3, 2, 1
 };
 
-void Multi::Init() {
+void Multi::Init(bool reset_calibration) {
   just_intonation_processor.Init();
   
   fill(
@@ -58,20 +58,22 @@ void Multi::Init() {
     part_[i].set_custom_pitch_table(settings_.custom_pitch_table);
   }
   for (uint8_t i = 0; i < kNumVoices; ++i) {
-    voice_[i].Init();
+    voice_[i].Init(reset_calibration);
   }
   running_ = false;
   latched_ = false;
   recording_ = false;
   
   // Put the multi in a usable state. Even if these settings will later be
-  // overriden with some data retrieved from Flash (presets).
+  // overridden with some data retrieved from Flash (presets).
   settings_.clock_tempo = 120;
   settings_.clock_swing = 0;
   settings_.clock_input_division = 1;
   settings_.clock_output_division = 7;
   settings_.clock_bar_duration = 4;
   settings_.clock_override = 0;
+  settings_.nudge_first_tick = 0;
+  settings_.clock_manual_start = 0;
   
   MidiSettings* midi = part_[0].mutable_midi_settings();
   midi->channel = 0;
@@ -90,11 +92,13 @@ void Multi::Init() {
   voicing->vibrato_range = 1;
   voicing->modulation_rate = 50;
   voicing->trigger_duration = 2;
-  voicing->aux_cv = 0;
+  voicing->aux_cv = 1;
+  voicing->aux_cv_2 = 6;
   voicing->tuning_transpose = 0;
   voicing->tuning_fine = 0;
   voicing->tuning_root = 0;
   voicing->tuning_system = 0;
+  voicing->tuning_factor = 0;
   voicing->audio_mode = 0;
 
   SequencerSettings* seq = part_[0].mutable_sequencer_settings();
@@ -119,7 +123,9 @@ void Multi::Init() {
   // seq->step[2].data[1] = 0x7f;
   // seq->step[3].data[0] = 72;
   // seq->step[3].data[1] = 0x7f;
-  // voicing->audio_mode = 1;  // To hear it...
+  // voicing->audio_mode = 1;
+  // settings_.clock_tempo = 100;
+  // settings_.clock_swing = 99;
 
   num_active_parts_ = 1;
   part_[0].AllocateVoices(&voice_[0], 1, false);
@@ -134,13 +140,19 @@ void Multi::Clock() {
   uint16_t output_division = clock_divisions[settings_.clock_output_division];
   uint16_t input_division = settings_.clock_input_division;
   
+  if (previous_output_division_ &&
+      output_division != previous_output_division_) {
+    needs_resync_ = true;
+  }
+  previous_output_division_ = output_division;
+  
   // Logic equation for computing a clock output with a 50% duty cycle.
   if (output_division > 1) {
     if (clock_output_prescaler_ == 0 && clock_input_prescaler_ == 0) {
       clock_pulse_counter_ = 0xffff;
     }
-    if (clock_output_prescaler_ == (output_division >> 1) &&
-        clock_input_prescaler_ == (input_division >> 1)) {
+    if (clock_output_prescaler_ >= (output_division >> 1) &&
+        clock_input_prescaler_ >= (input_division >> 1)) {
       clock_pulse_counter_ = 0;
     }
   } else {
@@ -158,11 +170,24 @@ void Multi::Clock() {
   if (!clock_input_prescaler_) {
     midi_handler.OnClock();
     
+    ++swing_counter_;
+    if (swing_counter_ >= 12) {
+      swing_counter_ = 0;
+    }
+    
     if (song_pointer_) {
       ClockSong();
     } else {
-      for (uint8_t i = 0; i < num_active_parts_; ++i) {
-        part_[i].Clock();
+      if (internal_clock()) {
+        swing_predelay_[swing_counter_] = 0;
+      } else {
+        uint32_t interval = midi_clock_tick_duration_;
+        midi_clock_tick_duration_ = 0;
+
+        uint32_t modulation = swing_counter_ < 6
+            ? swing_counter_ : 12 - swing_counter_;
+        swing_predelay_[swing_counter_] = \
+            27 * modulation * interval * uint32_t(settings_.clock_swing) >> 13;
       }
     }
     
@@ -171,7 +196,11 @@ void Multi::Clock() {
       bar_position_ = 0;
     }
     if (bar_position_ == 0) {
-      reset_pulse_counter_ = 81;
+      reset_pulse_counter_ = settings_.nudge_first_tick ? 9 : 81;
+      if (needs_resync_) {
+        clock_output_prescaler_ = 0;
+        needs_resync_ = false;
+      }
     }
     if (settings_.clock_bar_duration > kMaxBarDuration) {
       bar_position_ = 1;
@@ -212,11 +241,18 @@ void Multi::Start(bool started_by_keyboard) {
   clock_input_prescaler_ = 0;
   clock_output_prescaler_ = 0;
   stop_count_down_ = 0;
-  bar_position_ = 0xffff;
+  bar_position_ = -1;
+  swing_counter_ = -1;
+  previous_output_division_ = 0;
+  needs_resync_ = false;
+  
+  fill(&swing_predelay_[0], &swing_predelay_[12], -1);
+  
   for (uint8_t i = 0; i < num_active_parts_; ++i) {
     part_[i].Start(started_by_keyboard);
   }
   song_pointer_ = NULL;
+  midi_clock_tick_duration_ = 0;
 }
 
 void Multi::Stop() {
@@ -243,7 +279,19 @@ void Multi::Refresh() {
   if (reset_pulse_counter_) {
     --reset_pulse_counter_;
   }
-  
+
+  ++midi_clock_tick_duration_;
+  for (int i = 0; i < 12; ++i) {
+    if (swing_predelay_[i] == 0) {
+      for (uint8_t j = 0; j < num_active_parts_; ++j) {
+        part_[j].Clock();
+      }
+    }
+    if (swing_predelay_[i] >= 0) {
+      --swing_predelay_[i];
+    }
+  }
+
   for (uint8_t i = 0; i < kNumVoices; ++i) {
     voice_[i].Refresh();
   }
@@ -271,78 +319,82 @@ void Multi::GetCvGate(uint16_t* cv, bool* gate) {
   switch (settings_.layout) {
     case LAYOUT_MONO:
     case LAYOUT_DUAL_POLYCHAINED:
-      {
-        cv[0] = voice_[0].note_dac_code();
-        cv[1] = voice_[0].velocity_dac_code();
-        cv[2] = voice_[0].modulation_dac_code();
-        cv[3] = voice_[0].aux_cv_dac_code();
-        gate[0] = voice_[0].gate();
-        gate[1] = voice_[0].trigger();
-        gate[2] = clock();
-        gate[3] = reset_or_playing_flag();
-      }
+      cv[0] = voice_[0].note_dac_code();
+      cv[1] = voice_[0].velocity_dac_code();
+      cv[2] = voice_[0].aux_cv_dac_code();
+      cv[3] = voice_[0].aux_cv_dac_code_2();
+      gate[0] = voice_[0].gate();
+      gate[1] = voice_[0].trigger();
+      gate[2] = clock();
+      gate[3] = reset_or_playing_flag();
       break;
       
     case LAYOUT_DUAL_MONO:
-      // {
-      //   cv[0] = voice_[0].note_dac_code();
-      //   cv[1] = voice_[1].note_dac_code();
-      //   cv[2] = voice_[0].modulation_dac_code();
-      //   cv[3] = voice_[1].modulation_dac_code();
-      //   gate[0] = voice_[0].gate();
-      //   gate[1] = voice_[1].gate();
-      //   gate[2] = clock();
-      //   gate[3] = reset_or_playing_flag();
-      // }
-      // break;
+      cv[0] = voice_[0].note_dac_code();
+      cv[1] = voice_[1].note_dac_code();
+      cv[2] = voice_[0].aux_cv_dac_code();
+      cv[3] = voice_[1].aux_cv_dac_code();
+      gate[0] = voice_[0].gate();
+      gate[1] = voice_[1].gate();
+      gate[2] = clock();
+      gate[3] = reset_or_playing_flag();
+      break;
     
     case LAYOUT_DUAL_POLY:
     case LAYOUT_QUAD_POLYCHAINED:
-      {
-        cv[0] = voice_[0].note_dac_code();
-        cv[1] = voice_[1].note_dac_code();
-        cv[2] = (voice_[0].modulation_dac_code() >> 1) + \
-            (voice_[1].modulation_dac_code() >> 1);
-        cv[3] = (voice_[0].aux_cv_dac_code() >> 1) +
-            (voice_[1].aux_cv_dac_code() >> 1);
-        gate[0] = voice_[0].gate();
-        gate[1] = voice_[1].gate();
-        gate[2] = clock();
-        gate[3] = reset_or_playing_flag();
-      }
+      cv[0] = voice_[0].note_dac_code();
+      cv[1] = voice_[1].note_dac_code();
+      cv[2] = voice_[0].aux_cv_dac_code();
+      cv[3] = voice_[1].aux_cv_dac_code_2();
+      gate[0] = voice_[0].gate();
+      gate[1] = voice_[1].gate();
+      gate[2] = clock();
+      gate[3] = reset_or_playing_flag();
       break;
     
     case LAYOUT_QUAD_MONO:
     case LAYOUT_QUAD_POLY:
     case LAYOUT_OCTAL_POLYCHAINED:
     case LAYOUT_THREE_ONE:
-      {
-        cv[0] = voice_[0].note_dac_code();
-        cv[1] = voice_[1].note_dac_code();
-        cv[2] = voice_[2].note_dac_code();
-        cv[3] = voice_[3].note_dac_code();
-        gate[0] = voice_[0].gate();
-        gate[1] = voice_[1].gate();
-        if (settings_.clock_override) {
-          gate[2] = clock();
-          gate[3] = reset_or_playing_flag();
-        } else {
-          gate[2] = voice_[2].gate();
-          gate[3] = voice_[3].gate();
-        }
+      cv[0] = voice_[0].note_dac_code();
+      cv[1] = voice_[1].note_dac_code();
+      cv[2] = voice_[2].note_dac_code();
+      cv[3] = voice_[3].note_dac_code();
+      gate[0] = voice_[0].gate();
+      gate[1] = voice_[1].gate();
+      if (settings_.clock_override) {
+        gate[2] = clock();
+        gate[3] = reset_or_playing_flag();
+      } else {
+        gate[2] = voice_[2].gate();
+        gate[3] = voice_[3].gate();
       }
       break;
     
     case LAYOUT_QUAD_TRIGGERS:
-      {
-        cv[0] = voice_[0].trigger_dac_code();
-        cv[1] = voice_[1].trigger_dac_code();
-        cv[2] = voice_[2].trigger_dac_code();
-        cv[3] = voice_[3].trigger_dac_code();
-        gate[0] = voice_[0].trigger() && ~voice_[1].gate();
-        gate[1] = voice_[0].trigger() && voice_[1].gate();
+      cv[0] = voice_[0].trigger_dac_code();
+      cv[1] = voice_[1].trigger_dac_code();
+      cv[2] = voice_[2].trigger_dac_code();
+      cv[3] = voice_[3].trigger_dac_code();
+      gate[0] = voice_[0].trigger() && ~voice_[1].gate();
+      gate[1] = voice_[0].trigger() && voice_[1].gate();
+      gate[2] = clock();
+      gate[3] = reset_or_playing_flag();
+      break;
+
+    case LAYOUT_QUAD_VOLTAGES:
+      cv[0] = voice_[0].aux_cv_dac_code();
+      cv[1] = voice_[1].aux_cv_dac_code();
+      cv[2] = voice_[2].aux_cv_dac_code();
+      cv[3] = voice_[3].aux_cv_dac_code();
+      gate[0] = voice_[0].gate();
+      gate[1] = voice_[1].gate();
+      if (settings_.clock_override) {
         gate[2] = clock();
         gate[3] = reset_or_playing_flag();
+      } else {
+        gate[2] = voice_[2].gate();
+        gate[3] = voice_[3].gate();
       }
       break;
   }
@@ -353,49 +405,42 @@ bool Multi::GetAudioSource(uint8_t* audio_source) {
   switch (settings_.layout) {
     case LAYOUT_MONO:
     case LAYOUT_DUAL_POLYCHAINED:
-      {
-        audio_source[0] = 0xff;
-        audio_source[1] = 0xff;
-        audio_source[2] = 0xff;
-        audio_source[3] = voice_[0].audio_mode() ? 0 : 0xff;
-        has_audio_source = voice_[0].audio_mode();
-      }
+      audio_source[0] = 0xff;
+      audio_source[1] = 0xff;
+      audio_source[2] = 0xff;
+      audio_source[3] = voice_[0].audio_mode() ? 0 : 0xff;
+      has_audio_source = voice_[0].audio_mode();
       break;
       
     case LAYOUT_DUAL_MONO:
     case LAYOUT_DUAL_POLY:
     case LAYOUT_QUAD_POLYCHAINED:
-      {
-        audio_source[0] = 0xff;
-        audio_source[1] = 0xff;
-        audio_source[2] = voice_[0].audio_mode() ? 0 : 0xff;
-        audio_source[3] = voice_[1].audio_mode() ? 1 : 0xff;
-        has_audio_source = voice_[0].audio_mode() || voice_[1].audio_mode();
-      }
+      audio_source[0] = 0xff;
+      audio_source[1] = 0xff;
+      audio_source[2] = voice_[0].audio_mode() ? 0 : 0xff;
+      audio_source[3] = voice_[1].audio_mode() ? 1 : 0xff;
+      has_audio_source = voice_[0].audio_mode() || voice_[1].audio_mode();
       break;
       
     case LAYOUT_QUAD_MONO:
     case LAYOUT_QUAD_POLY:
     case LAYOUT_OCTAL_POLYCHAINED:
     case LAYOUT_THREE_ONE:
-      {
-        audio_source[0] = voice_[0].audio_mode() ? 0 : 0xff;
-        audio_source[1] = voice_[1].audio_mode() ? 1 : 0xff;
-        audio_source[2] = voice_[2].audio_mode() ? 2 : 0xff;
-        audio_source[3] = voice_[3].audio_mode() ? 3 : 0xff;
-        has_audio_source = voice_[0].audio_mode() || voice_[1].audio_mode() || \
-            voice_[2].audio_mode() || voice_[3].audio_mode();
-      }
+      audio_source[0] = voice_[0].audio_mode() ? 0 : 0xff;
+      audio_source[1] = voice_[1].audio_mode() ? 1 : 0xff;
+      audio_source[2] = voice_[2].audio_mode() ? 2 : 0xff;
+      audio_source[3] = voice_[3].audio_mode() ? 3 : 0xff;
+      has_audio_source = voice_[0].audio_mode() || voice_[1].audio_mode() || \
+          voice_[2].audio_mode() || voice_[3].audio_mode();
       break;
     
     case LAYOUT_QUAD_TRIGGERS:
-      {
-        audio_source[0] = 0xff;
-        audio_source[1] = 0xff;
-        audio_source[2] = 0xff;
-        audio_source[3] = 0xff;
-        has_audio_source = false;
-      }
+    case LAYOUT_QUAD_VOLTAGES:
+      audio_source[0] = 0xff;
+      audio_source[1] = 0xff;
+      audio_source[2] = 0xff;
+      audio_source[3] = 0xff;
+      has_audio_source = false;
       break;
   }
   return has_audio_source;
@@ -413,31 +458,25 @@ void Multi::GetLedsBrightness(uint8_t* brightness) {
   switch (settings_.layout) {
     case LAYOUT_MONO:
     case LAYOUT_DUAL_POLYCHAINED:
-      {
-        brightness[0] = voice_[0].gate() ? 255 : 0;
-        brightness[1] = voice_[0].velocity() << 1;
-        brightness[2] = voice_[0].modulation() << 1;
-        brightness[3] = voice_[0].aux_cv();
-      }
+      brightness[0] = voice_[0].gate() ? 255 : 0;
+      brightness[1] = voice_[0].velocity() << 1;
+      brightness[2] = voice_[0].aux_cv();
+      brightness[3] = voice_[0].aux_cv_2();
       break;
       
     case LAYOUT_DUAL_MONO:
-      // {
-      //   brightness[0] = voice_[0].gate() ? 255 : 0;
-      //   brightness[1] = voice_[1].gate() ? 255 : 0;
-      //   brightness[2] = voice_[0].modulation();
-      //   brightness[3] = voice_[1].modulation();
-      // }
-      // break;
-      // 
+      brightness[0] = voice_[0].gate() ? 255 : 0;
+      brightness[1] = voice_[1].gate() ? 255 : 0;
+      brightness[2] = voice_[0].aux_cv();
+      brightness[3] = voice_[1].aux_cv();
+      break;
+
     case LAYOUT_DUAL_POLY:
     case LAYOUT_QUAD_POLYCHAINED:
-      {
-        brightness[0] = voice_[0].gate() ? 255 : 0;
-        brightness[1] = voice_[1].gate() ? 255 : 0;
-        brightness[2] = voice_[0].modulation() + voice_[1].modulation();
-        brightness[3] = (voice_[0].aux_cv() >> 1) + (voice_[1].aux_cv() >> 1);
-      }
+      brightness[0] = voice_[0].gate() ? 255 : 0;
+      brightness[1] = voice_[1].gate() ? 255 : 0;
+      brightness[2] = voice_[0].aux_cv();
+      brightness[3] = voice_[1].aux_cv_2();
       break;
       
     case LAYOUT_QUAD_MONO:
@@ -445,12 +484,17 @@ void Multi::GetLedsBrightness(uint8_t* brightness) {
     case LAYOUT_OCTAL_POLYCHAINED:
     case LAYOUT_QUAD_TRIGGERS:
     case LAYOUT_THREE_ONE:
-      {
-        brightness[0] = voice_[0].gate() ? (voice_[0].velocity() << 1) : 0;
-        brightness[1] = voice_[1].gate() ? (voice_[1].velocity() << 1) : 0;
-        brightness[2] = voice_[2].gate() ? (voice_[2].velocity() << 1) : 0;
-        brightness[3] = voice_[3].gate() ? (voice_[3].velocity() << 1) : 0;
-      }
+      brightness[0] = voice_[0].gate() ? (voice_[0].velocity() << 1) : 0;
+      brightness[1] = voice_[1].gate() ? (voice_[1].velocity() << 1) : 0;
+      brightness[2] = voice_[2].gate() ? (voice_[2].velocity() << 1) : 0;
+      brightness[3] = voice_[3].gate() ? (voice_[3].velocity() << 1) : 0;
+      break;
+      
+    case LAYOUT_QUAD_VOLTAGES:
+      brightness[0] = voice_[0].aux_cv();
+      brightness[1] = voice_[1].aux_cv();
+      brightness[2] = voice_[2].aux_cv();
+      brightness[3] = voice_[3].aux_cv();
       break;
   }
 }
@@ -496,6 +540,7 @@ void Multi::UpdateLayout() {
       break;
       
     case LAYOUT_QUAD_TRIGGERS:
+    case LAYOUT_QUAD_VOLTAGES:
       {
         for (uint8_t i = 0; i < 4; ++i) {
           part_[i].AllocateVoices(&voice_[i], 1, false);
@@ -679,6 +724,48 @@ void Multi::ChangeLayout(Layout old_layout, Layout new_layout) {
         part_[1].AllocateVoices(&voice_[3], 1, false);
 
         num_active_parts_ = 2;
+      }
+      break;
+    
+    case LAYOUT_QUAD_VOLTAGES:
+      {
+        uint8_t num_parts = 4;
+        for (uint8_t i = 0; i < num_parts; ++i) {
+          MidiSettings* midi = part_[i].mutable_midi_settings();
+          if (old_layout == LAYOUT_QUAD_TRIGGERS) {
+            midi->min_note = 0;
+            midi->max_note = 127;
+          }
+          midi->min_velocity = 0;
+          midi->max_velocity = 127;
+          VoicingSettings* voicing = part_[i].mutable_voicing_settings();
+          voicing->allocation_mode = VOICE_ALLOCATION_MODE_MONO;
+          voicing->allocation_priority = NOTE_STACK_PRIORITY_LAST;
+        }
+      
+        // Duplicate uninitialized voices.
+        for (uint8_t i = 1; i < num_parts; ++i) {
+          uint8_t destination = i;
+          uint8_t source = i % num_active_parts_;
+          if (destination != source) {
+            memcpy(
+                part_[destination].mutable_midi_settings(),
+                part_[source].mutable_midi_settings(),
+                sizeof(MidiSettings));
+            memcpy(
+                part_[destination].mutable_voicing_settings(),
+                part_[source].mutable_voicing_settings(),
+                sizeof(VoicingSettings));
+            memcpy(
+                part_[destination].mutable_sequencer_settings(),
+                part_[source].mutable_sequencer_settings(),
+                sizeof(SequencerSettings));
+          }
+        }
+        for (uint8_t i = 0; i < num_parts; ++i) {
+          part_[i].AllocateVoices(&voice_[i], 1, false);
+        }
+        num_active_parts_ = num_parts;
       }
       break;
     

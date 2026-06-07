@@ -1,6 +1,6 @@
-// Copyright 2013 Olivier Gillet.
+// Copyright 2013 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -72,6 +72,8 @@ enum SettingIndex {
   SETTING_CLOCK_INPUT_DIVISION,
   SETTING_CLOCK_OUTPUT_DIVISION,
   SETTING_CLOCK_BAR_DURATION,
+  SETTING_CLOCK_NUDGE_FIRST_TICK,
+  SETTING_CLOCK_MANUAL_START,
   SETTING_CLOCK_OVERRIDE,
   SETTING_MIDI_CHANNEL,
   SETTING_MIDI_MIN_NOTE,
@@ -94,7 +96,9 @@ enum SettingIndex {
   SETTING_VOICING_TRIGGER_DURATION,
   SETTING_VOICING_TRIGGER_SCALE,
   SETTING_VOICING_TRIGGER_SHAPE,
-  SETTING_VOICING_AUX_CV,
+  SETTING_VOICING_CV_OUT,
+  SETTING_VOICING_CV_OUT_3,
+  SETTING_VOICING_CV_OUT_4,
   SETTING_VOICING_AUDIO_MODE,
   SETTING_SEQUENCER_CLOCK_DIVISION,
   SETTING_SEQUENCER_GATE_LENGTH,
@@ -108,6 +112,7 @@ enum SettingIndex {
   SETTING_SEQUENCER_EUCLIDEAN_FILL,
   SETTING_SEQUENCER_EUCLIDEAN_ROTATE,
   SETTING_REMOTE_CONTROL_CHANNEL,
+  SETTING_VOICING_TUNING_FACTOR,
 
   SETTING_LAST
 };

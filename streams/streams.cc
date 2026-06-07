@@ -1,6 +1,6 @@
-// Copyright 2013 Olivier Gillet.
+// Copyright 2013 Emilie Gillet.
 // 
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -78,6 +78,7 @@ void Process(uint16_t* cv) {
         &frequency);
     if (ui.calibrating()) {
       gain = 0;
+      frequency = 65535;
     }
     dac.Write(i, cv_scaler.ScaleGain(i, gain));
     pwm.Write(i, 65535 - frequency);

@@ -1,6 +1,6 @@
-// Copyright 2013 Olivier Gillet.
+// Copyright 2013 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -48,7 +48,7 @@ class PulseRandomizer {
   ~PulseRandomizer() { }
   
   void Init();
-  void FillBuffer(InputBuffer* input_buffer, OutputBuffer* output_buffer);
+  void Process(const GateFlags* gate_flags, int16_t* out, size_t size);
   
   void Configure(uint16_t* parameter, ControlMode control_mode) {
     if (control_mode == CONTROL_MODE_HALF) {

@@ -1,6 +1,6 @@
-// Copyright 2012 Olivier Gillet.
+// Copyright 2012 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -118,7 +118,8 @@ class Ui {
   Display display_;
   Encoder encoder_;
   
-  int16_t dac_code_c2_;
+  int16_t adc_code_c2_;
+  int16_t adc_code_min_[2];
   int16_t cv_[4];
   
   uint8_t splash_frame_;

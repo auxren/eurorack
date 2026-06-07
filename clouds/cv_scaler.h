@@ -1,6 +1,6 @@
-// Copyright 2014 Olivier Gillet.
+// Copyright 2014 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -95,6 +95,10 @@ class CvScaler {
   inline void set_blend_parameter(BlendParameter parameter) {
     blend_parameter_ = parameter;
     blend_knob_origin_ = previous_blend_knob_value_;
+  }
+  
+  inline void MatchKnobPosition() {
+    previous_blend_knob_value_ = -1.0f;
   }
   
   inline BlendParameter blend_parameter() const {

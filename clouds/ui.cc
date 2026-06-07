@@ -1,6 +1,6 @@
-// Copyright 2014 Olivier Gillet.
+// Copyright 2014 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -60,6 +60,7 @@ void Ui::Init(
   // Sanitize saved settings.
   cv_scaler_->set_blend_parameter(
       static_cast<BlendParameter>(state.blend_parameter & 3));
+  cv_scaler_->MatchKnobPosition();
   processor_->set_quality(state.quality & 3);
   processor_->set_playback_mode(
       static_cast<PlaybackMode>(state.playback_mode & 3));
